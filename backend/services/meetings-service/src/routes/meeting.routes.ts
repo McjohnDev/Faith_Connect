@@ -15,7 +15,12 @@ import {
   startBackgroundMusic,
   stopBackgroundMusic,
   updateMusicVolume,
-  getMusicState
+  getMusicState,
+  startRecording,
+  stopRecording,
+  startScreenshare,
+  stopScreenshare,
+  shareResource
 } from '../controllers/meeting.controller';
 import { validateRequest } from '../middleware/validation';
 import { rateLimiter } from '../middleware/rateLimiter';
@@ -110,6 +115,44 @@ router.get(
   '/:meetingId/music',
   rateLimiter.getMeeting,
   getMusicState
+);
+
+// Recording placeholders
+router.post(
+  '/:meetingId/recording/start',
+  rateLimiter.controlMeeting,
+  validateRequest('startRecording'),
+  startRecording
+);
+
+router.post(
+  '/:meetingId/recording/stop',
+  rateLimiter.controlMeeting,
+  validateRequest('stopRecording'),
+  stopRecording
+);
+
+// Screenshare placeholders
+router.post(
+  '/:meetingId/screenshare/start',
+  rateLimiter.controlMeeting,
+  validateRequest('startScreenshare'),
+  startScreenshare
+);
+
+router.post(
+  '/:meetingId/screenshare/stop',
+  rateLimiter.controlMeeting,
+  validateRequest('stopScreenshare'),
+  stopScreenshare
+);
+
+// Resource sharing placeholder
+router.post(
+  '/:meetingId/resources/share',
+  rateLimiter.controlMeeting,
+  validateRequest('shareResource'),
+  shareResource
 );
 
 export default router;

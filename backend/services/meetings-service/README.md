@@ -93,6 +93,14 @@ Token expires after 1 hour (configurable).
 Tables:
 - `meetings` - Meeting data
 - `meeting_participants` - Participant tracking
+- Background music state is stored in-memory for now (swap to Redis later).
+
+Local infra:
+- Start DBs/Redis: `docker compose -f infrastructure/docker-compose.local.yml up -d`
+- Run migrations from `backend/shared/database`:
+  - `npm install`
+  - `npm run migrate:mysql` (dev)
+  - `npm run migrate:postgres` (prod)
 
 ## Rate Limits
 

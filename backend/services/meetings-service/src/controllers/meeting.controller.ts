@@ -6,23 +6,30 @@
 import { Request, Response, NextFunction } from 'express';
 import { MeetingService } from '../services/meeting.service';
 import { logger } from '../utils/logger';
-import { CreateMeetingDto, JoinMeetingDto, MeetingControlDto, StartMusicDto, UpdateMusicVolumeDto } from '../types/meeting.types';
+import { CreateMeetingDto, JoinMeetingDto, MeetingControlDto, StartMusicDto, UpdateMusicVolumeDto, ShareResourceDto } from '../types/meeting.types';
 
 // Lazy initialization with WebSocket service
 let meetingServiceInstance: MeetingService | null = null;
+let pendingWsService: any | null = null;
 
 const getMeetingService = (): MeetingService => {
   if (!meetingServiceInstance) {
     meetingServiceInstance = new MeetingService();
-    // WebSocket service will be set from index.ts after initialization
+    // Apply pending ws service if it was set before first access
+    if (pendingWsService) {
+      meetingServiceInstance.setWebSocketService(pendingWsService);
+      pendingWsService = null;
+    }
   }
   return meetingServiceInstance;
 };
 
 // Set WebSocket service (called from index.ts)
 export const setWebSocketService = (wsService: any): void => {
+  pendingWsService = wsService;
   if (meetingServiceInstance) {
     meetingServiceInstance.setWebSocketService(wsService);
+    pendingWsService = null;
   }
 };
 
@@ -312,6 +319,112 @@ export const getMusicState = async (
     });
   } catch (error: any) {
     logger.error('Get music state error:', error);
+    next(error);
+  }
+};
+
+export const startRecording = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const { meetingId } = req.params;
+
+    await getMeetingService().startRecording(meetingId, userId);
+
+    res.json({
+      success: true,
+      message: 'Recording started'
+    });
+  } catch (error: any) {
+    logger.error('Start recording error:', error);
+    next(error);
+  }
+};
+
+export const stopRecording = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const { meetingId } = req.params;
+
+    await getMeetingService().stopRecording(meetingId, userId);
+
+    res.json({
+      success: true,
+      message: 'Recording stopped'
+    });
+  } catch (error: any) {
+    logger.error('Stop recording error:', error);
+    next(error);
+  }
+};
+
+export const startScreenshare = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const { meetingId } = req.params;
+
+    await getMeetingService().startScreenshare(meetingId, userId);
+
+    res.json({
+      success: true,
+      message: 'Screenshare started'
+    });
+  } catch (error: any) {
+    logger.error('Start screenshare error:', error);
+    next(error);
+  }
+};
+
+export const stopScreenshare = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const { meetingId } = req.params;
+
+    await getMeetingService().stopScreenshare(meetingId, userId);
+
+    res.json({
+      success: true,
+      message: 'Screenshare stopped'
+    });
+  } catch (error: any) {
+    logger.error('Stop screenshare error:', error);
+    next(error);
+  }
+};
+
+export const shareResource = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const { meetingId } = req.params;
+    const resource: ShareResourceDto = req.body;
+
+    await getMeetingService().shareResource(meetingId, userId, resource);
+
+    res.json({
+      success: true,
+      message: 'Resource shared'
+    });
+  } catch (error: any) {
+    logger.error('Share resource error:', error);
     next(error);
   }
 };

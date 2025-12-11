@@ -77,6 +77,15 @@ export interface MeetingControlDto {
   role?: MeetingRole;
 }
 
+export type ResourceShareType = 'pdf' | 'image' | 'link' | 'video' | 'audio' | 'other';
+
+export interface ShareResourceDto {
+  type: ResourceShareType;
+  url: string;
+  name: string;
+  description?: string;
+}
+
 export interface BackgroundMusicState {
   isEnabled: boolean;
   source: 'upload' | 'stream' | 'url';

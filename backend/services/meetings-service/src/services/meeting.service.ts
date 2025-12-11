@@ -6,6 +6,7 @@
 import { randomUUID } from 'crypto';
 import { AgoraService } from './agora.service';
 import { DatabaseService } from './database.service';
+import { MusicStateRepository } from '../repositories/musicState.repository';
 import { logger } from '../utils/logger';
 import {
   Meeting,
@@ -18,17 +19,20 @@ import {
   MeetingControlDto,
   BackgroundMusicState,
   StartMusicDto,
-  UpdateMusicVolumeDto
+  UpdateMusicVolumeDto,
+  ShareResourceDto
 } from '../types/meeting.types';
 
 export class MeetingService {
   private agoraService: AgoraService;
   private dbService: DatabaseService;
   private wsService?: any; // WebSocketService (circular dependency, set via setter)
+  private musicRepo: MusicStateRepository;
 
   constructor() {
     this.agoraService = new AgoraService();
     this.dbService = new DatabaseService();
+    this.musicRepo = new MusicStateRepository();
   }
 
   /**
@@ -287,6 +291,13 @@ export class MeetingService {
         await this.dbService.updateMeeting(meetingId, {
           isLocked: control.action === 'lock'
         });
+        if (this.wsService) {
+          this.wsService.emitToMeeting(meetingId, control.action === 'lock' ? 'meeting:locked' : 'meeting:unlocked', {
+            meetingId,
+            userId,
+            timestamp: new Date().toISOString()
+          });
+        }
         break;
 
       default:
@@ -366,14 +377,13 @@ export class MeetingService {
       startedAt: new Date()
     };
 
-    // Store music state (in Redis for real-time, DB for persistence)
     await this.dbService.updateMeeting(meetingId, {
       backgroundMusicEnabled: true
     });
 
-    // Store music state in Redis for real-time access
-    // This will be used by WebSocket events to notify clients
-    
+    // Persist music state (in-memory for now; swap to Redis later)
+    await this.musicRepo.set(meetingId, musicState);
+
     // Emit WebSocket event
     if (this.wsService) {
       this.wsService.musicStarted(meetingId, userId, musicState);
@@ -411,6 +421,9 @@ export class MeetingService {
     await this.dbService.updateMeeting(meetingId, {
       backgroundMusicEnabled: false
     });
+
+    // Clear stored music state
+    await this.musicRepo.delete(meetingId);
 
     // Emit WebSocket event
     if (this.wsService) {
@@ -453,8 +466,12 @@ export class MeetingService {
       throw new Error('INVALID_VOLUME');
     }
 
-    // Update volume in Redis (for real-time) and notify via WebSocket
-    
+    // Update stored state
+    const updated = await this.musicRepo.updateVolume(meetingId, data.volume);
+    if (!updated) {
+      throw new Error('MUSIC_NOT_ACTIVE');
+    }
+
     // Emit WebSocket event
     if (this.wsService) {
       this.wsService.musicVolumeUpdated(meetingId, userId, data.volume);
@@ -472,20 +489,151 @@ export class MeetingService {
       throw new Error('MEETING_NOT_FOUND');
     }
 
-    // In a real implementation, this would fetch from Redis
-    // For now, return based on meeting flag
-    if (!meeting.backgroundMusicEnabled) {
+    const state = await this.musicRepo.get(meetingId);
+    if (!state) {
       return null;
     }
 
-    // This would come from Redis in production
-    // For now, return a placeholder
-    return {
-      isEnabled: true,
-      source: 'url',
-      volume: 50,
-      isLooping: true
-    };
+    return state;
+  }
+
+  /**
+   * Start recording (placeholder hook)
+   */
+  async startRecording(meetingId: string, userId: string): Promise<void> {
+    const meeting = await this.dbService.getMeeting(meetingId);
+    if (!meeting) {
+      throw new Error('MEETING_NOT_FOUND');
+    }
+
+    const participant = await this.dbService.getParticipant(meetingId, userId);
+    if (!participant) {
+      throw new Error('NOT_PARTICIPANT');
+    }
+
+    const canControl = participant.role === MeetingRole.HOST || participant.role === MeetingRole.CO_HOST;
+    if (!canControl) {
+      throw new Error('INSUFFICIENT_PERMISSIONS');
+    }
+
+    await this.dbService.updateMeeting(meetingId, { recordingEnabled: true });
+
+    if (this.wsService) {
+      this.wsService.recordingStarted(meetingId, userId);
+    }
+
+    logger.info(`Recording started for meeting ${meetingId} by ${userId}`);
+  }
+
+  /**
+   * Stop recording (placeholder hook)
+   */
+  async stopRecording(meetingId: string, userId: string): Promise<void> {
+    const meeting = await this.dbService.getMeeting(meetingId);
+    if (!meeting) {
+      throw new Error('MEETING_NOT_FOUND');
+    }
+
+    const participant = await this.dbService.getParticipant(meetingId, userId);
+    if (!participant) {
+      throw new Error('NOT_PARTICIPANT');
+    }
+
+    const canControl = participant.role === MeetingRole.HOST || participant.role === MeetingRole.CO_HOST;
+    if (!canControl) {
+      throw new Error('INSUFFICIENT_PERMISSIONS');
+    }
+
+    await this.dbService.updateMeeting(meetingId, { recordingEnabled: false });
+
+    if (this.wsService) {
+      this.wsService.recordingStopped(meetingId, userId);
+    }
+
+    logger.info(`Recording stopped for meeting ${meetingId} by ${userId}`);
+  }
+
+  /**
+   * Start screen share (placeholder hook)
+   */
+  async startScreenshare(meetingId: string, userId: string): Promise<void> {
+    const meeting = await this.dbService.getMeeting(meetingId);
+    if (!meeting) {
+      throw new Error('MEETING_NOT_FOUND');
+    }
+
+    const participant = await this.dbService.getParticipant(meetingId, userId);
+    if (!participant) {
+      throw new Error('NOT_PARTICIPANT');
+    }
+
+    const canShare =
+      participant.role === MeetingRole.HOST ||
+      participant.role === MeetingRole.CO_HOST ||
+      participant.role === MeetingRole.SPEAKER;
+
+    if (!canShare) {
+      throw new Error('INSUFFICIENT_PERMISSIONS');
+    }
+
+    if (this.wsService) {
+      this.wsService.screenshareStarted(meetingId, userId);
+    }
+
+    logger.info(`Screenshare started for meeting ${meetingId} by ${userId}`);
+  }
+
+  /**
+   * Stop screen share (placeholder hook)
+   */
+  async stopScreenshare(meetingId: string, userId: string): Promise<void> {
+    const meeting = await this.dbService.getMeeting(meetingId);
+    if (!meeting) {
+      throw new Error('MEETING_NOT_FOUND');
+    }
+
+    const participant = await this.dbService.getParticipant(meetingId, userId);
+    if (!participant) {
+      throw new Error('NOT_PARTICIPANT');
+    }
+
+    const canShare =
+      participant.role === MeetingRole.HOST ||
+      participant.role === MeetingRole.CO_HOST ||
+      participant.role === MeetingRole.SPEAKER;
+
+    if (!canShare) {
+      throw new Error('INSUFFICIENT_PERMISSIONS');
+    }
+
+    if (this.wsService) {
+      this.wsService.screenshareStopped(meetingId, userId);
+    }
+
+    logger.info(`Screenshare stopped for meeting ${meetingId} by ${userId}`);
+  }
+
+  /**
+   * Share resource (placeholder hook)
+   */
+  async shareResource(meetingId: string, userId: string, resource: ShareResourceDto): Promise<void> {
+    const meeting = await this.dbService.getMeeting(meetingId);
+    if (!meeting) {
+      throw new Error('MEETING_NOT_FOUND');
+    }
+
+    const participant = await this.dbService.getParticipant(meetingId, userId);
+    if (!participant) {
+      throw new Error('NOT_PARTICIPANT');
+    }
+
+    // Allow any participant for now; tighten later if needed
+
+    if (this.wsService) {
+      this.wsService.resourceShared(meetingId, userId, resource);
+    }
+
+    logger.info(`Resource shared in meeting ${meetingId} by ${userId}: ${resource.name}`);
   }
 }
 

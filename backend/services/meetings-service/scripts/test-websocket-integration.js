@@ -44,6 +44,81 @@ let eventsReceived = {
   'meeting:music-stopped': false
 };
 
+async function fetchMusicState(label) {
+  const response = await makeRequest(
+    'GET',
+    `/api/v1/meetings/${meetingId}/music`,
+    null,
+    hostToken
+  );
+  console.log(`${label} music state status:`, response.status, response.data);
+  return response;
+}
+
+async function startMusic() {
+  console.log('\n🎵 Step 4: Starting background music...');
+  try {
+    const response = await makeRequest(
+      'POST',
+      `/api/v1/meetings/${meetingId}/music/start`,
+      {
+        source: 'url',
+        trackUrl: 'https://example.com/music.mp3',
+        volume: 50,
+        isLooping: true
+      },
+      hostToken
+    );
+
+    if (response.status === 200) {
+      console.log('✅ Music start request sent\n');
+    } else {
+      console.error('❌ Failed to start music:', response.data);
+    }
+  } catch (error) {
+    console.error('❌ Error starting music:', error.message);
+  }
+}
+
+async function stopMusic() {
+  console.log('\n🔇 Step 5: Stopping background music...');
+  try {
+    const response = await makeRequest(
+      'POST',
+      `/api/v1/meetings/${meetingId}/music/stop`,
+      null,
+      hostToken
+    );
+
+    if (response.status === 200) {
+      console.log('✅ Music stop request sent\n');
+    } else {
+      console.error('❌ Failed to stop music:', response.data);
+    }
+  } catch (error) {
+    console.error('❌ Error stopping music:', error.message);
+  }
+}
+
+async function raiseHand() {
+  console.log('\n✋ Step 6: Raising hand...');
+  try {
+    const response = await makeRequest(
+      'POST',
+      `/api/v1/meetings/${meetingId}/hand/raise`,
+      null,
+      participantToken
+    );
+    if (response.status === 200) {
+      console.log('✅ Hand raise request sent\n');
+    } else {
+      console.error('❌ Failed to raise hand:', response.data);
+    }
+  } catch (error) {
+    console.error('❌ Error raising hand:', error.message);
+  }
+}
+
 // Helper to make HTTP requests
 function makeRequest(method, path, data = null, token = null) {
   return new Promise((resolve, reject) => {
@@ -131,8 +206,8 @@ participantSocket.on('meeting:joined', async () => {
 
     if (response.status === 200) {
       console.log('✅ Joined meeting via API\n');
-      // Wait for event
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Kick off music start flow
+      await startMusic();
     } else {
       console.error('❌ Failed to join meeting:', response.data);
     }
@@ -150,74 +225,27 @@ participantSocket.on('meeting:participant-joined', (data) => {
 participantSocket.on('meeting:hand-raised', async (data) => {
   console.log('✋ Event: Hand raised -', data.userId);
   eventsReceived['meeting:hand-raised'] = true;
-
-  // Step 4: Start music (should trigger music-started event)
-  console.log('\n🎵 Step 4: Starting background music...');
-  try {
-    const response = await makeRequest(
-      'POST',
-      `/api/v1/meetings/${meetingId}/music/start`,
-      {
-        source: 'url',
-        trackUrl: 'https://example.com/music.mp3',
-        volume: 50,
-        isLooping: true
-      },
-      hostToken
-    );
-
-    if (response.status === 200) {
-      console.log('✅ Music started via API\n');
-      await new Promise(resolve => setTimeout(resolve, 500));
-    } else {
-      console.error('❌ Failed to start music:', response.data);
-    }
-  } catch (error) {
-    console.error('❌ Error starting music:', error.message);
-  }
 });
 
 participantSocket.on('meeting:music-started', async (data) => {
   console.log('🎵 Event: Music started -', data.musicState.trackUrl);
   eventsReceived['meeting:music-started'] = true;
 
-  // Step 5: Stop music
-  console.log('\n🔇 Step 5: Stopping background music...');
-  try {
-    const response = await makeRequest(
-      'POST',
-      `/api/v1/meetings/${meetingId}/music/stop`,
-      null,
-      hostToken
-    );
+  await fetchMusicState('After start');
 
-    if (response.status === 200) {
-      console.log('✅ Music stopped via API\n');
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-  } catch (error) {
-    console.error('❌ Error stopping music:', error.message);
-  }
+  await stopMusic();
 });
 
 participantSocket.on('meeting:music-stopped', (data) => {
   console.log('🔇 Event: Music stopped -', data.userId);
   eventsReceived['meeting:music-stopped'] = true;
 
-  // Step 6: Raise hand (should trigger hand-raised event)
-  console.log('\n✋ Step 6: Raising hand...');
-  makeRequest(
-    'POST',
-    `/api/v1/meetings/${meetingId}/hand/raise`,
-    null,
-    participantToken
-  ).then((response) => {
-    if (response.status === 200) {
-      console.log('✅ Hand raised via API\n');
-      setTimeout(() => {
-        finishTest();
-      }, 1000);
-    }
+  fetchMusicState('After stop').then(() => {
+  raiseHand().then(() => {
+    setTimeout(() => {
+      finishTest();
+    }, 1000);
+  });
   });
 });
 

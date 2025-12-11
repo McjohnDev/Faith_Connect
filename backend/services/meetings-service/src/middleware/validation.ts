@@ -36,6 +36,29 @@ const schemas = {
 
   updateMusicVolume: z.object({
     volume: z.number().min(0).max(100)
+  }),
+
+  startRecording: z.object({
+    // placeholder: no body fields required for now
+  }),
+
+  stopRecording: z.object({
+    // placeholder: no body fields required for now
+  }),
+
+  startScreenshare: z.object({
+    // placeholder: no body fields required for now
+  }),
+
+  stopScreenshare: z.object({
+    // placeholder: no body fields required for now
+  }),
+
+  shareResource: z.object({
+    type: z.enum(['pdf', 'image', 'link', 'video', 'audio', 'other']),
+    url: z.string().url('Invalid resource URL'),
+    name: z.string().min(1).max(200),
+    description: z.string().max(500).optional()
   })
 };
 
