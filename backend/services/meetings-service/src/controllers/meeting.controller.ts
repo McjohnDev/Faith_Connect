@@ -390,6 +390,115 @@ export const getRecordingState = async (
   }
 };
 
+/**
+ * List recordings for a meeting (playback listing)
+ */
+export const listRecordings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { meetingId } = req.params;
+    const status = req.query.status as string | undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+    const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined;
+
+    const recordings = await getMeetingService().listRecordings(meetingId, {
+      status,
+      limit,
+      offset
+    });
+
+    res.json({
+      success: true,
+      data: recordings,
+      count: recordings.length
+    });
+  } catch (error: any) {
+    logger.error('List recordings error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Report network quality
+ */
+export const reportNetworkQuality = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const { meetingId } = req.params;
+    const { quality, rtt, packetLoss, bandwidth } = req.body;
+
+    const recommendations = await getMeetingService().reportNetworkQuality(meetingId, userId, {
+      quality,
+      rtt,
+      packetLoss,
+      bandwidth
+    });
+
+    res.json({
+      success: true,
+      data: recommendations
+    });
+  } catch (error: any) {
+    logger.error('Report network quality error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Handle reconnection - synchronize state
+ */
+export const handleReconnection = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const { meetingId } = req.params;
+
+    const state = await getMeetingService().handleReconnection(meetingId, userId);
+
+    res.json({
+      success: true,
+      data: state
+    });
+  } catch (error: any) {
+    logger.error('Handle reconnection error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get network recommendations
+ */
+export const getNetworkRecommendations = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+    const { meetingId } = req.params;
+
+    const recommendations = await getMeetingService().getNetworkRecommendations(meetingId, userId);
+
+    res.json({
+      success: true,
+      data: recommendations
+    });
+  } catch (error: any) {
+    logger.error('Get network recommendations error:', error);
+    next(error);
+  }
+};
+
 export const startScreenshare = async (
   req: Request,
   res: Response,
@@ -450,6 +559,28 @@ export const shareResource = async (
     });
   } catch (error: any) {
     logger.error('Share resource error:', error);
+    next(error);
+  }
+};
+
+/**
+ * List shared resources
+ */
+export const listSharedResources = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { meetingId } = req.params;
+    const resources = await getMeetingService().listResources(meetingId);
+
+    res.json({
+      success: true,
+      data: resources
+    });
+  } catch (error: any) {
+    logger.error('List shared resources error:', error);
     next(error);
   }
 };

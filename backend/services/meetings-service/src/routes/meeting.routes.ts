@@ -19,9 +19,14 @@ import {
   startRecording,
   stopRecording,
   getRecordingState,
+  listRecordings,
+  reportNetworkQuality,
+  handleReconnection,
+  getNetworkRecommendations,
   startScreenshare,
   stopScreenshare,
-  shareResource
+  shareResource,
+  listSharedResources
 } from '../controllers/meeting.controller';
 import { validateRequest } from '../middleware/validation';
 import { rateLimiter } from '../middleware/rateLimiter';
@@ -139,6 +144,31 @@ router.get(
   getRecordingState
 );
 
+router.get(
+  '/:meetingId/recordings',
+  rateLimiter.getMeeting,
+  listRecordings
+);
+
+// Network adaptation
+router.post(
+  '/:meetingId/network/quality',
+  rateLimiter.general,
+  reportNetworkQuality
+);
+
+router.post(
+  '/:meetingId/reconnect',
+  rateLimiter.joinMeeting,
+  handleReconnection
+);
+
+router.get(
+  '/:meetingId/network/recommendations',
+  rateLimiter.getMeeting,
+  getNetworkRecommendations
+);
+
 // Screenshare placeholders
 router.post(
   '/:meetingId/screenshare/start',
@@ -160,6 +190,12 @@ router.post(
   rateLimiter.controlMeeting,
   validateRequest('shareResource'),
   shareResource
+);
+
+router.get(
+  '/:meetingId/resources',
+  rateLimiter.getMeeting,
+  listSharedResources
 );
 
 export default router;

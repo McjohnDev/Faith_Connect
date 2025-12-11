@@ -4,8 +4,10 @@
 
 import winston from 'winston';
 
+const logLevel = process.env.LOG_LEVEL || 'info';
+
 export const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  level: logLevel,
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
@@ -21,4 +23,13 @@ export const logger = winston.createLogger({
     })
   ]
 });
+
+// Small helper for structured event logs
+export const logEvent = (
+  level: 'info' | 'warn' | 'error' | 'debug',
+  message: string,
+  meta?: Record<string, any>
+): void => {
+  logger.log(level, message, meta);
+};
 

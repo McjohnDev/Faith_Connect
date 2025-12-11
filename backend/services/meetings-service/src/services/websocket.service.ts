@@ -305,6 +305,29 @@ export class WebSocketService {
   }
 
   /**
+   * Network quality update
+   */
+  networkQualityUpdate(meetingId: string, userId: string, recommendations: any): void {
+    this.emitToMeeting(meetingId, 'meeting:network-quality-update', {
+      meetingId,
+      userId,
+      recommendations,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Participant reconnected
+   */
+  participantReconnected(meetingId: string, userId: string): void {
+    this.emitToMeeting(meetingId, 'meeting:participant-reconnected', {
+      meetingId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
    * Screen share started
    */
   screenshareStarted(meetingId: string, userId: string): void {

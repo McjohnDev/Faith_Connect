@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   mysql:
     image: mysql:8.0
@@ -34,6 +32,66 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+
+  auth-service:
+    build:
+      context: ../backend/services/auth-service
+      dockerfile: Dockerfile
+    container_name: faithconnect-auth
+    depends_on:
+      - mysql
+      - postgres
+      - redis
+    env_file:
+      - ../backend/services/auth-service/env.docker.example
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=
+      - MYSQL_DATABASE=faithconnect_test
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DATABASE=faithconnect
+      - REDIS_URL=redis://redis:6379
+      - ALLOWED_ORIGINS=*
+    ports:
+      - "3001:3001"
+
+  meetings-service:
+    build:
+      context: ../backend/services/meetings-service
+      dockerfile: Dockerfile
+    container_name: faithconnect-meetings
+    depends_on:
+      - mysql
+      - postgres
+      - redis
+    env_file:
+      - ../backend/services/meetings-service/env.docker.example
+    environment:
+      - PORT=3002
+      - NODE_ENV=development
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=
+      - MYSQL_DATABASE=faithconnect_test
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DATABASE=faithconnect
+      - AGORA_APP_ID=placeholder
+      - AGORA_APP_CERTIFICATE=placeholder
+      - JWT_SECRET=changeme
+      - ALLOWED_ORIGINS=*
+    ports:
+      - "3002:3002"
 
 volumes:
   mysql_data:

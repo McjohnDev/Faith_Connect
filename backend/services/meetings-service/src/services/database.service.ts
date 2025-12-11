@@ -297,6 +297,21 @@ export class DatabaseService {
     return 0;
   }
 
+  async getMeetingParticipants(meetingId: string): Promise<MeetingParticipant[]> {
+    const query = this.dbType === 'mysql'
+      ? 'SELECT * FROM meeting_participants WHERE meeting_id = ? AND left_at IS NULL ORDER BY joined_at ASC'
+      : 'SELECT * FROM meeting_participants WHERE meeting_id = $1 AND left_at IS NULL ORDER BY joined_at ASC';
+
+    if (this.dbType === 'mysql' && this.mysqlPool) {
+      const [rows] = await this.mysqlPool.execute(query, [meetingId]);
+      return (rows as any[]).map(row => this.mapToParticipant(row));
+    } else if (this.pgPool) {
+      const result = await this.pgPool.query(query, [meetingId]);
+      return result.rows.map(row => this.mapToParticipant(row));
+    }
+    return [];
+  }
+
   async updateParticipant(
     meetingId: string,
     userId: string,
@@ -396,6 +411,226 @@ export class DatabaseService {
       leftAt: row.left_at ? new Date(row.left_at) : undefined,
       agoraUid: row.agora_uid || row.agoraUid
     };
+  }
+
+  // Recording management methods
+  async createRecording(recording: {
+    id: string;
+    meetingId: string;
+    recordingId: string;
+    startedBy: string;
+    startedAt: Date;
+  }): Promise<void> {
+    const query = this.dbType === 'mysql'
+      ? `INSERT INTO recordings (id, meeting_id, recording_id, started_by, started_at, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'processing', ?, ?)`
+      : `INSERT INTO recordings (id, meeting_id, recording_id, started_by, started_at, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'processing', $6, $7)`;
+
+    const params = [
+      recording.id,
+      recording.meetingId,
+      recording.recordingId,
+      recording.startedBy,
+      recording.startedAt,
+      recording.startedAt,
+      recording.startedAt
+    ];
+
+    if (this.dbType === 'mysql' && this.mysqlPool) {
+      await this.mysqlPool.execute(query, params);
+    } else if (this.pgPool) {
+      await this.pgPool.query(query, params);
+    }
+  }
+
+  async updateRecording(recordingId: string, update: {
+    storageUrl?: string;
+    storageKey?: string;
+    duration?: number;
+    fileSize?: number;
+    status?: 'processing' | 'completed' | 'failed';
+    stoppedAt?: Date;
+    completedAt?: Date;
+    errorMessage?: string;
+  }): Promise<void> {
+    const updates: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (update.storageUrl !== undefined) {
+      if (this.dbType === 'mysql') {
+        updates.push('storage_url = ?');
+        params.push(update.storageUrl);
+      } else {
+        updates.push(`storage_url = $${paramIndex++}`);
+        params.push(update.storageUrl);
+      }
+    }
+
+    if (update.storageKey !== undefined) {
+      if (this.dbType === 'mysql') {
+        updates.push('storage_key = ?');
+        params.push(update.storageKey);
+      } else {
+        updates.push(`storage_key = $${paramIndex++}`);
+        params.push(update.storageKey);
+      }
+    }
+
+    if (update.duration !== undefined) {
+      if (this.dbType === 'mysql') {
+        updates.push('duration = ?');
+        params.push(update.duration);
+      } else {
+        updates.push(`duration = $${paramIndex++}`);
+        params.push(update.duration);
+      }
+    }
+
+    if (update.fileSize !== undefined) {
+      if (this.dbType === 'mysql') {
+        updates.push('file_size = ?');
+        params.push(update.fileSize);
+      } else {
+        updates.push(`file_size = $${paramIndex++}`);
+        params.push(update.fileSize);
+      }
+    }
+
+    if (update.status !== undefined) {
+      if (this.dbType === 'mysql') {
+        updates.push('status = ?');
+        params.push(update.status);
+      } else {
+        updates.push(`status = $${paramIndex++}`);
+        params.push(update.status);
+      }
+    }
+
+    if (update.stoppedAt !== undefined) {
+      if (this.dbType === 'mysql') {
+        updates.push('stopped_at = ?');
+        params.push(update.stoppedAt);
+      } else {
+        updates.push(`stopped_at = $${paramIndex++}`);
+        params.push(update.stoppedAt);
+      }
+    }
+
+    if (update.completedAt !== undefined) {
+      if (this.dbType === 'mysql') {
+        updates.push('completed_at = ?');
+        params.push(update.completedAt);
+      } else {
+        updates.push(`completed_at = $${paramIndex++}`);
+        params.push(update.completedAt);
+      }
+    }
+
+    if (update.errorMessage !== undefined) {
+      if (this.dbType === 'mysql') {
+        updates.push('error_message = ?');
+        params.push(update.errorMessage);
+      } else {
+        updates.push(`error_message = $${paramIndex++}`);
+        params.push(update.errorMessage);
+      }
+    }
+
+    if (updates.length === 0) return;
+
+    updates.push(this.dbType === 'mysql' ? 'updated_at = NOW()' : 'updated_at = CURRENT_TIMESTAMP');
+
+    const query = this.dbType === 'mysql'
+      ? `UPDATE recordings SET ${updates.join(', ')} WHERE recording_id = ?`
+      : `UPDATE recordings SET ${updates.join(', ')} WHERE recording_id = $${paramIndex}`;
+
+    params.push(recordingId);
+
+    if (this.dbType === 'mysql' && this.mysqlPool) {
+      await this.mysqlPool.execute(query, params);
+    } else if (this.pgPool) {
+      await this.pgPool.query(query, params);
+    }
+  }
+
+  async getRecording(recordingId: string): Promise<any | null> {
+    const query = this.dbType === 'mysql'
+      ? 'SELECT * FROM recordings WHERE recording_id = ?'
+      : 'SELECT * FROM recordings WHERE recording_id = $1';
+
+    if (this.dbType === 'mysql' && this.mysqlPool) {
+      const [rows] = await this.mysqlPool.execute(query, [recordingId]);
+      const recordings = rows as any[];
+      return recordings.length > 0 ? recordings[0] : null;
+    } else if (this.pgPool) {
+      const result = await this.pgPool.query(query, [recordingId]);
+      return result.rows.length > 0 ? result.rows[0] : null;
+    }
+    return null;
+  }
+
+  async listRecordings(filters?: {
+    meetingId?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
+    let query = 'SELECT * FROM recordings WHERE 1=1';
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (filters?.meetingId) {
+      if (this.dbType === 'mysql') {
+        query += ' AND meeting_id = ?';
+        params.push(filters.meetingId);
+      } else {
+        query += ` AND meeting_id = $${paramIndex++}`;
+        params.push(filters.meetingId);
+      }
+    }
+
+    if (filters?.status) {
+      if (this.dbType === 'mysql') {
+        query += ' AND status = ?';
+        params.push(filters.status);
+      } else {
+        query += ` AND status = $${paramIndex++}`;
+        params.push(filters.status);
+      }
+    }
+
+    query += ' ORDER BY started_at DESC';
+
+    if (filters?.limit) {
+      if (this.dbType === 'mysql') {
+        query += ' LIMIT ?';
+        params.push(filters.limit);
+      } else {
+        query += ` LIMIT $${paramIndex++}`;
+        params.push(filters.limit);
+      }
+    }
+
+    if (filters?.offset) {
+      if (this.dbType === 'mysql') {
+        query += ' OFFSET ?';
+        params.push(filters.offset);
+      } else {
+        query += ` OFFSET $${paramIndex++}`;
+        params.push(filters.offset);
+      }
+    }
+
+    if (this.dbType === 'mysql' && this.mysqlPool) {
+      const [rows] = await this.mysqlPool.execute(query, params);
+      return rows as any[];
+    } else if (this.pgPool) {
+      const result = await this.pgPool.query(query, params);
+      return result.rows;
+    }
+    return [];
   }
 }
 

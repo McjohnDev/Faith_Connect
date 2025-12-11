@@ -90,7 +90,10 @@ export class AuthService {
   async verifyOtp(
     phoneNumber: string,
     otp: string,
-    guidelinesAccepted: boolean
+    guidelinesAccepted: boolean,
+    deviceId?: string,
+    deviceName?: string,
+    deviceType?: string
   ): Promise<{
     user: any;
     tokens: {
@@ -129,14 +132,25 @@ export class AuthService {
       }
     }
 
-    // Check device count
-    const deviceCount = await this.dbService.getUserDeviceCount(user.id);
-    if (deviceCount >= this.MAX_DEVICES) {
-      throw new Error('MAX_DEVICES_REACHED');
+    // Track device if provided
+    if (deviceId) {
+      // Check if this device already exists
+      const deviceExists = await this.dbService.deviceExists(user.id, deviceId);
+      
+      // Only check device count if this is a new device
+      if (!deviceExists) {
+        const deviceCount = await this.dbService.getUserDeviceCount(user.id);
+        if (deviceCount >= this.MAX_DEVICES) {
+          throw new Error('MAX_DEVICES_REACHED');
+        }
+      }
+
+      // Create or update device
+      await this.dbService.createOrUpdateDevice(user.id, deviceId, deviceName, deviceType);
     }
 
     // Generate tokens
-    const tokens = await this.generateTokens(user.id);
+    const tokens = await this.generateTokens(user.id, deviceId);
 
     // Store refresh token
     await this.redisService.setex(
@@ -158,18 +172,18 @@ export class AuthService {
   /**
    * Generate JWT tokens
    */
-  private async generateTokens(userId: string): Promise<{
+  private async generateTokens(userId: string, deviceId?: string): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
     const accessToken = jwt.sign(
-      { userId, type: 'access' },
+      { userId, type: 'access', deviceId },
       this.JWT_SECRET,
       { expiresIn: this.ACCESS_TOKEN_EXPIRY }
     );
 
     const refreshToken = jwt.sign(
-      { userId, type: 'refresh' },
+      { userId, type: 'refresh', deviceId },
       this.JWT_REFRESH_SECRET,
       { expiresIn: this.REFRESH_TOKEN_EXPIRY }
     );
@@ -197,7 +211,7 @@ export class AuthService {
       }
 
       // Generate new token pair (rotation)
-      const tokens = await this.generateTokens(decoded.userId);
+      const tokens = await this.generateTokens(decoded.userId, decoded.deviceId);
 
       // Delete old refresh token
       await this.redisService.del(`refresh:${decoded.userId}:${refreshToken}`);

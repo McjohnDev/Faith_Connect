@@ -5,9 +5,15 @@
 
 import { randomUUID } from 'crypto';
 import { AgoraService } from './agora.service';
+import { AgoraRecordingService } from './agora-recording.service';
 import { DatabaseService } from './database.service';
+import { RedisService } from './redis.service';
+import { NetworkAdaptationService } from './network-adaptation.service';
 import { MusicStateRepository } from '../repositories/musicState.repository';
+import { MusicStateRepositoryRedis } from '../repositories/musicState.repository.redis';
 import { RecordingStateRepository } from '../repositories/recordingState.repository';
+import { RecordingStateRepositoryRedis } from '../repositories/recordingState.repository.redis';
+import { ResourceShareRepository } from '../repositories/resourceShare.repository';
 import { StorageService } from './storage.service';
 import { logger } from '../utils/logger';
 import {
@@ -23,22 +29,53 @@ import {
   StartMusicDto,
   UpdateMusicVolumeDto,
   ShareResourceDto,
-  RecordingState
+  RecordingState,
+  ResourceShare
 } from '../types/meeting.types';
 
 export class MeetingService {
   private agoraService: AgoraService;
+  private agoraRecordingService?: AgoraRecordingService;
   private dbService: DatabaseService;
+  private redisService: RedisService;
+  private networkAdaptationService: NetworkAdaptationService;
   private wsService?: any; // WebSocketService (circular dependency, set via setter)
-  private musicRepo: MusicStateRepository;
-  private recordingRepo: RecordingStateRepository;
+  private musicRepo: MusicStateRepository | MusicStateRepositoryRedis;
+  private recordingRepo: RecordingStateRepository | RecordingStateRepositoryRedis;
+  private resourceRepo: ResourceShareRepository;
   private storageService: StorageService;
 
   constructor() {
     this.agoraService = new AgoraService();
     this.dbService = new DatabaseService();
-    this.musicRepo = new MusicStateRepository();
-    this.recordingRepo = new RecordingStateRepository();
+    this.redisService = new RedisService();
+    this.networkAdaptationService = new NetworkAdaptationService(this.redisService);
+    
+    // Initialize Agora Recording Service if credentials are available
+    if (this.agoraService.isConfigured() && process.env.AGORA_CUSTOMER_ID && process.env.AGORA_CUSTOMER_SECRET) {
+      this.agoraRecordingService = new AgoraRecordingService({
+        appId: process.env.AGORA_APP_ID || '',
+        appCertificate: process.env.AGORA_APP_CERTIFICATE || '',
+        customerId: process.env.AGORA_CUSTOMER_ID,
+        customerSecret: process.env.AGORA_CUSTOMER_SECRET
+      });
+      logger.info('Agora Cloud Recording service initialized');
+    } else {
+      logger.warn('Agora Cloud Recording not configured. Recording will use stub mode.');
+    }
+    
+    // Use Redis repositories if Redis is available, otherwise fall back to in-memory
+    if (this.redisService.isAvailable()) {
+      this.musicRepo = new MusicStateRepositoryRedis(this.redisService);
+      this.recordingRepo = new RecordingStateRepositoryRedis(this.redisService);
+      logger.info('Using Redis-backed repositories for music and recording states');
+    } else {
+      this.musicRepo = new MusicStateRepository();
+      this.recordingRepo = new RecordingStateRepository();
+      logger.info('Using in-memory repositories (Redis not available)');
+    }
+    
+    this.resourceRepo = new ResourceShareRepository();
     this.storageService = new StorageService();
   }
 
@@ -530,21 +567,85 @@ export class MeetingService {
     }
 
     const recordingId = randomUUID();
+    const startedAt = new Date();
+
+    // Create recording record in database
+    await this.dbService.createRecording({
+      id: randomUUID(),
+      meetingId,
+      recordingId,
+      startedBy: userId,
+      startedAt
+    });
+
+    // Start Agora Cloud Recording if available
+    let agoraResourceId: string | undefined;
+    let agoraSid: string | undefined;
+
+    if (this.agoraRecordingService && this.agoraService.isConfigured()) {
+      try {
+        // Generate token for recording bot (UID 0)
+        const recordingToken = this.agoraService.generateToken(
+          meeting.channelName,
+          0, // Recording bot UID
+          'publisher',
+          3600
+        );
+
+        // Acquire resource
+        agoraResourceId = await this.agoraRecordingService.acquireResource(
+          meeting.channelName,
+          '0' // Recording bot UID as string
+        );
+
+        // Start recording with S3 storage if configured
+        const storageConfig = process.env.AWS_S3_BUCKET ? {
+          vendor: 1, // AWS S3
+          region: parseInt(process.env.AWS_REGION_ID || '0'),
+          bucket: process.env.AWS_S3_BUCKET,
+          accessKey: process.env.AWS_ACCESS_KEY_ID,
+          secretKey: process.env.AWS_SECRET_ACCESS_KEY,
+          fileNamePrefix: [`meetings/${meetingId}/recordings/${recordingId}`]
+        } : undefined;
+
+        const recordingResponse = await this.agoraRecordingService.startRecording({
+          channelName: meeting.channelName,
+          uid: '0',
+          token: recordingToken,
+          recordingConfig: {
+            maxIdleTime: 30,
+            streamTypes: 0, // Audio only
+            audioProfile: 0
+          },
+          storageConfig
+        }, agoraResourceId);
+
+        agoraSid = recordingResponse.sid;
+        logger.info(`Agora Cloud Recording started: resourceId=${agoraResourceId}, sid=${agoraSid}`);
+      } catch (error: any) {
+        logger.error('Failed to start Agora Cloud Recording:', error);
+        // Continue with stub mode - recording state will be tracked but not actually recorded
+        logger.warn('Recording will continue in stub mode');
+      }
+    }
+
     const recordingState: RecordingState = {
       isRecording: true,
       recordingId,
       startedBy: userId,
-      startedAt: new Date()
+      startedAt
     };
 
-    // Persist recording state
-    await this.recordingRepo.set(meetingId, recordingState);
+    // Persist recording state (include Agora IDs if available)
+    await this.recordingRepo.set(meetingId, {
+      ...recordingState,
+      agoraResourceId,
+      agoraSid
+    } as any);
 
     // Update meeting flag
     await this.dbService.updateMeeting(meetingId, { recordingEnabled: true });
 
-    // In production, this would trigger Agora Cloud Recording
-    // For now, we just log and store state
     logger.info(`Recording started for meeting ${meetingId} by ${userId}, recordingId: ${recordingId}`);
 
     // Emit WebSocket event
@@ -585,18 +686,63 @@ export class MeetingService {
       ? Math.floor((stoppedAt.getTime() - current.startedAt.getTime()) / 1000)
       : 0;
 
-    // In production, this would:
-    // 1. Stop Agora Cloud Recording
-    // 2. Wait for recording file to be available
-    // 3. Upload to storage (S3, etc.)
-    // 4. Get storage URL
+    let storageUrl: string | undefined;
+    let storageKey: string | undefined;
+    let fileSize: number | undefined;
+    let errorMessage: string | undefined;
 
-    // Stub: generate mock storage URL
-    const storageUrl = await this.storageService.uploadRecording(
-      meetingId,
-      current.recordingId!,
-      `stub://recording-${current.recordingId}.mp4`
-    );
+    // Stop Agora Cloud Recording if available
+    const recordingData = current as any;
+    if (this.agoraRecordingService && recordingData.agoraResourceId && recordingData.agoraSid) {
+      try {
+        await this.agoraRecordingService.stopRecording(
+          recordingData.agoraResourceId,
+          recordingData.agoraSid,
+          meeting.channelName,
+          '0'
+        );
+
+        // Poll for recording completion (in production, use webhook or background job)
+        // For now, we'll mark as processing and handle upload asynchronously
+        logger.info(`Agora Cloud Recording stopped: resourceId=${recordingData.agoraResourceId}, sid=${recordingData.agoraSid}`);
+
+        // Update database with stopped status
+        await this.dbService.updateRecording(current.recordingId!, {
+          status: 'processing',
+          stoppedAt,
+          duration
+        });
+
+        // Note: In production, you would:
+        // 1. Set up a webhook to receive Agora recording completion notification
+        // 2. Or poll the recording status until files are available
+        // 3. Download files from Agora and upload to S3
+        // 4. Update database with final storage URL
+
+        // For now, we'll use a stub approach
+        storageUrl = `https://storage.example.com/recordings/${current.recordingId}.mp4`;
+        storageKey = `meetings/${meetingId}/recordings/${current.recordingId}.mp4`;
+        fileSize = Math.floor(Math.random() * 100000000); // Stub
+
+      } catch (error: any) {
+        logger.error('Failed to stop Agora Cloud Recording:', error);
+        errorMessage = error.message;
+        await this.dbService.updateRecording(current.recordingId!, {
+          status: 'failed',
+          stoppedAt,
+          errorMessage
+        });
+      }
+    } else {
+      // Stub mode: generate mock storage URL
+      storageUrl = await this.storageService.uploadRecording(
+        meetingId,
+        current.recordingId!,
+        `stub://recording-${current.recordingId}.mp4`
+      );
+      storageKey = `meetings/${meetingId}/recordings/${current.recordingId}.mp4`;
+      fileSize = Math.floor(Math.random() * 100000000);
+    }
 
     const updatedState: RecordingState = {
       ...current,
@@ -604,16 +750,29 @@ export class MeetingService {
       stoppedAt,
       duration,
       storageUrl,
-      fileSize: Math.floor(Math.random() * 100000000) // Stub file size
+      fileSize
     };
 
     // Persist updated state
     await this.recordingRepo.set(meetingId, updatedState);
 
+    // Update database recording record
+    if (storageUrl && current.recordingId) {
+      await this.dbService.updateRecording(current.recordingId, {
+        storageUrl,
+        storageKey,
+        duration,
+        fileSize,
+        status: errorMessage ? 'failed' : 'completed',
+        completedAt: errorMessage ? undefined : new Date(),
+        errorMessage
+      });
+    }
+
     // Update meeting flag
     await this.dbService.updateMeeting(meetingId, { recordingEnabled: false });
 
-    logger.info(`Recording stopped for meeting ${meetingId} by ${userId}, duration: ${duration}s, storage: ${storageUrl}`);
+    logger.info(`Recording stopped for meeting ${meetingId} by ${userId}, duration: ${duration}s, storage: ${storageUrl || 'pending'}`);
 
     // Emit WebSocket event
     if (this.wsService) {
@@ -627,6 +786,153 @@ export class MeetingService {
    * Get current recording state
    */
   async getRecordingState(meetingId: string): Promise<RecordingState | null> {
+    return await this.recordingRepo.get(meetingId);
+  }
+
+  /**
+   * List recordings for a meeting
+   */
+  async listRecordings(meetingId: string, filters?: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
+    const recordings = await this.dbService.listRecordings({
+      meetingId,
+      ...filters
+    });
+
+    // Format recordings for response
+    return recordings.map(rec => ({
+      id: rec.id,
+      recordingId: rec.recording_id,
+      meetingId: rec.meeting_id,
+      storageUrl: rec.storage_url,
+      duration: rec.duration,
+      fileSize: rec.file_size,
+      status: rec.status,
+      startedBy: rec.started_by,
+      startedAt: rec.started_at,
+      stoppedAt: rec.stopped_at,
+      completedAt: rec.completed_at,
+      errorMessage: rec.error_message,
+      createdAt: rec.created_at
+    }));
+  }
+
+  /**
+   * Report network quality from client
+   */
+  async reportNetworkQuality(
+    meetingId: string,
+    userId: string,
+    quality: {
+      quality: 'excellent' | 'good' | 'poor' | 'bad' | 'very_bad' | 'down';
+      rtt: number;
+      packetLoss: number;
+      bandwidth: number;
+    }
+  ): Promise<{
+    enableAudioPriority: boolean;
+    recommendedBitrate: number;
+    packetLossAcceptable: boolean;
+    actions: string[];
+  }> {
+    // Verify user is participant
+    const participant = await this.dbService.getParticipant(meetingId, userId);
+    if (!participant) {
+      throw new Error('NOT_PARTICIPANT');
+    }
+
+    // Report network quality
+    await this.networkAdaptationService.reportNetworkQuality({
+      userId,
+      meetingId,
+      ...quality,
+      timestamp: new Date()
+    });
+
+    // Get recommendations
+    const networkQuality = await this.networkAdaptationService.getNetworkQuality(userId, meetingId);
+    if (!networkQuality) {
+      throw new Error('NETWORK_QUALITY_NOT_FOUND');
+    }
+
+    const recommendations = this.networkAdaptationService.getAdaptationRecommendations(networkQuality);
+
+    // Emit WebSocket event if quality is poor
+    if (recommendations.enableAudioPriority && this.wsService) {
+      this.wsService.networkQualityUpdate(meetingId, userId, recommendations);
+    }
+
+    return recommendations;
+  }
+
+  /**
+   * Handle reconnection - synchronize state
+   */
+  async handleReconnection(meetingId: string, userId: string): Promise<{
+    meeting: Meeting;
+    participant: MeetingParticipant;
+    musicState: BackgroundMusicState | null;
+    recordingState: RecordingState | null;
+    participants: MeetingParticipant[];
+  }> {
+    // Verify meeting exists
+    const meeting = await this.dbService.getMeeting(meetingId);
+    if (!meeting) {
+      throw new Error('MEETING_NOT_FOUND');
+    }
+
+    // Get or create participant
+    let participant = await this.dbService.getParticipant(meetingId, userId);
+    if (!participant) {
+      // Rejoin as listener if not found
+      participant = await this.addParticipant(meetingId, userId, MeetingRole.LISTENER);
+    }
+
+    // Get current meeting state
+    const musicState = await this.musicRepo.get(meetingId);
+    const recordingState = await this.recordingRepo.get(meetingId);
+
+    // Get all participants
+    const allParticipants = await this.dbService.getMeetingParticipants(meetingId);
+
+    // Clear reconnection state
+    this.networkAdaptationService.clearReconnectionState(userId);
+
+    // Emit reconnection event
+    if (this.wsService) {
+      this.wsService.participantReconnected(meetingId, userId);
+    }
+
+    logger.info(`User ${userId} reconnected to meeting ${meetingId}`);
+
+    return {
+      meeting,
+      participant,
+      musicState,
+      recordingState,
+      participants: allParticipants
+    };
+  }
+
+  /**
+   * Get network adaptation recommendations
+   */
+  async getNetworkRecommendations(meetingId: string, userId: string): Promise<{
+    enableAudioPriority: boolean;
+    recommendedBitrate: number;
+    packetLossAcceptable: boolean;
+    actions: string[];
+  } | null> {
+    const networkQuality = await this.networkAdaptationService.getNetworkQuality(userId, meetingId);
+    if (!networkQuality) {
+      return null;
+    }
+
+    return this.networkAdaptationService.getAdaptationRecommendations(networkQuality);
+  }
     const meeting = await this.dbService.getMeeting(meetingId);
     if (!meeting) {
       throw new Error('MEETING_NOT_FOUND');
@@ -711,11 +1017,35 @@ export class MeetingService {
 
     // Allow any participant for now; tighten later if needed
 
+    const share: ResourceShare = {
+      id: randomUUID(),
+      meetingId,
+      userId,
+      type: resource.type,
+      url: resource.url,
+      name: resource.name,
+      description: resource.description,
+      sharedAt: new Date()
+    };
+
+    await this.resourceRepo.add(share);
+
     if (this.wsService) {
-      this.wsService.resourceShared(meetingId, userId, resource);
+      this.wsService.resourceShared(meetingId, userId, share);
     }
 
     logger.info(`Resource shared in meeting ${meetingId} by ${userId}: ${resource.name}`);
+  }
+
+  /**
+   * List shared resources
+   */
+  async listResources(meetingId: string): Promise<ResourceShare[]> {
+    const meeting = await this.dbService.getMeeting(meetingId);
+    if (!meeting) {
+      throw new Error('MEETING_NOT_FOUND');
+    }
+    return await this.resourceRepo.list(meetingId);
   }
 }
 

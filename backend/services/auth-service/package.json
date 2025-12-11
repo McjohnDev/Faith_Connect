@@ -12,6 +12,7 @@
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "test:twilio": "node scripts/test-twilio.js",
+    "test:device-tracking": "node scripts/test-device-tracking.js",
     "migrate": "cd ../../shared/database && npm run migrate",
     "migrate:mysql": "cd ../../shared/database && npm run migrate:mysql",
     "migrate:postgres": "cd ../../shared/database && npm run migrate:postgres"
@@ -26,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.6.5",
     "pg": "^8.11.3",
+    "prom-client": "^15.1.2",
     "redis": "^4.6.11",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",

@@ -1,0 +1,22 @@
+{
+  "name": "@faithconnect/load-testing",
+  "version": "1.0.0",
+  "description": "Load and performance testing for FaithConnect services",
+  "main": "index.js",
+  "scripts": {
+    "test:load": "node scenarios/meetings-load-test.js",
+    "test:chaos": "node chaos/chaos-test.js",
+    "test:performance": "node scenarios/performance-benchmark.js",
+    "test:all": "npm run test:load && npm run test:chaos && npm run test:performance"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "p-limit": "^5.0.0",
+    "socket.io-client": "^4.8.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  }
+}

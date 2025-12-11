@@ -79,7 +79,7 @@ export const verifyPhone = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { phoneNumber, otp, guidelinesAccepted } = req.body;
+    const { phoneNumber, otp, guidelinesAccepted, deviceId, deviceName, deviceType } = req.body;
 
     // Check guidelines acceptance
     if (!guidelinesAccepted) {
@@ -93,7 +93,14 @@ export const verifyPhone = async (
       return;
     }
 
-    const result = await getAuthService().verifyOtp(phoneNumber, otp, guidelinesAccepted);
+    const result = await getAuthService().verifyOtp(
+      phoneNumber,
+      otp,
+      guidelinesAccepted,
+      deviceId,
+      deviceName,
+      deviceType
+    );
 
     res.status(200).json({
       success: true,

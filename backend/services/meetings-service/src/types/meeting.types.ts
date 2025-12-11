@@ -86,6 +86,17 @@ export interface ShareResourceDto {
   description?: string;
 }
 
+export interface ResourceShare {
+  id: string;
+  meetingId: string;
+  userId: string;
+  type: ResourceShareType;
+  url: string;
+  name: string;
+  description?: string;
+  sharedAt: Date;
+}
+
 export interface BackgroundMusicState {
   isEnabled: boolean;
   source: 'upload' | 'stream' | 'url';

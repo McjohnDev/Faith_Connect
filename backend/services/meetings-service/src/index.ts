@@ -12,13 +12,13 @@ import meetingRoutes from './routes/meeting.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import { WebSocketService } from './services/websocket.service';
+import { metricsHandler, metricsMiddleware } from './middleware/metrics';
 
 dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3002;
-
 // Initialize WebSocket service
 const wsService = new WebSocketService(httpServer);
 
@@ -34,6 +34,9 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Metrics (Prometheus)
+app.use(metricsMiddleware);
 
 // Request logging
 app.use((req: Request, _res: Response, next) => {
@@ -52,6 +55,9 @@ app.get('/health', (_req: Request, res: Response) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// Metrics scrape endpoint
+app.get('/metrics', metricsHandler);
 
 // Routes
 app.use('/api/v1/meetings', meetingRoutes);

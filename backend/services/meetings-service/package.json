@@ -13,9 +13,12 @@
     "test:websocket": "node scripts/test-websocket-events.js",
     "test:websocket:integration": "node scripts/test-websocket-integration.js",
     "test:recording:integration": "node scripts/test-recording-integration.js",
+    "test:resources:integration": "node scripts/test-resource-integration.js",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.948.0",
+    "@aws-sdk/s3-request-presigner": "^3.948.0",
     "agora-token": "^2.0.5",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -24,6 +27,7 @@
     "helmet": "^7.1.0",
     "mysql2": "^3.6.5",
     "pg": "^8.11.3",
+    "prom-client": "^15.1.2",
     "redis": "^4.6.11",
     "socket.io": "^4.8.1",
     "uuid": "^9.0.1",

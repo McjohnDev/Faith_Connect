@@ -17,7 +17,10 @@ const verifyOtpSchema = z.object({
   otp: z.string().length(6, 'OTP must be 6 digits'),
   guidelinesAccepted: z.boolean().refine(val => val === true, {
     message: 'Community Guidelines must be accepted'
-  })
+  }),
+  deviceId: z.string().optional(),
+  deviceName: z.string().optional(),
+  deviceType: z.enum(['ios', 'android', 'web']).optional()
 });
 
 const loginSchema = z.object({

@@ -11,6 +11,8 @@ Live Prayer Meetings Service with Agora.io Integration
 - Hand raise functionality
 - Background music support (API ready)
 - Recording support (API ready)
+- Screenshare + resource share hooks (API + WebSocket events)
+- Prometheus `/metrics` endpoint for observability
 
 ## Setup
 
@@ -19,7 +21,7 @@ Live Prayer Meetings Service with Agora.io Integration
 npm install
 
 # Copy environment template
-cp .env.template .env
+cp env.docker.example .env
 
 # Edit .env with your credentials:
 # - Agora App ID and Certificate
@@ -142,6 +144,9 @@ JWT_SECRET=your_jwt_secret
 
 # Logging
 LOG_LEVEL=info
+
+# Metrics
+# /metrics returns uptime, memory, load averages
 ```
 
 ## Next Steps

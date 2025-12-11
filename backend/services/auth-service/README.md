@@ -21,7 +21,7 @@ Phone OTP Authentication Service (WhatsApp Style)
 npm install
 
 # Copy environment template
-cp .env.template .env
+cp env.docker.example .env
 
 # Edit .env with your credentials
 
@@ -47,6 +47,7 @@ npm start
 - `POST /api/v1/auth/refresh-token` - Refresh access token
 - `POST /api/v1/auth/logout` - Logout and revoke tokens
 - `GET /health` - Health check
+- `GET /metrics` - Prometheus scrape endpoint
 
 ## Database
 

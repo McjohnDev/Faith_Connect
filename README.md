@@ -13,8 +13,28 @@ FaithConnect is a full-stack application built with:
 
 ## 📋 Documentation
 
+### Getting Started
+- [Quick Start Guide](./QUICK-START-LOCAL.md) - Get running in 5 minutes
+- [Setup Without Docker](./docs/SETUP-WITHOUT-DOCKER.md) - Complete setup instructions
+- [Project Summary](./docs/PROJECT-SUMMARY.md) - Complete project overview
+
+### Sprint Status
+- [Sprint 1 Complete](./docs/SPRINT-1-COMPLETE.md) - Full completion report
+- [Sprint 1 Status](./docs/SPRINT-1-STATUS.md) - Sprint progress tracking
+- [Implementation Progress](./docs/IMPLEMENTATION-PROGRESS.md) - Detailed progress
+- [Sprints & Stories](./sprints-and-stories.md) - Development roadmap
+
+### Testing Results
+- [API Test Results](./docs/API-TEST-RESULTS.md) - API endpoint testing
+- [WebSocket Test Results](./docs/WEBSOCKET-TEST-RESULTS.md) - WebSocket event testing
+- [Auth OTP Tests](./docs/AUTH-OTP-TEST-COMPLETE.md) - OTP authentication testing
+
+### Integration Guides
+- [Agora Integration](./docs/AGORA-INTEGRATION.md) - Agora.io setup guide
+- [Troubleshooting](./TROUBLESHOOTING.md) - Common issues and solutions
+
+### Other
 - [Functional Requirements](./functional-requirements.md) - Complete product specification
-- [Sprints & Stories](./sprints-and-stories.md) - Development roadmap and implementation stories
 - [Jira Setup](./SETUP-JIRA.md) - Jira ticket creation guide
 
 ## 🚀 Quick Start
@@ -22,24 +42,27 @@ FaithConnect is a full-stack application built with:
 ### Prerequisites
 
 - Node.js 18+ LTS
-- Docker (for local databases)
+- MySQL (or Docker for databases)
+- Redis (optional, has fallback)
 - Git
 
 ### Setup
 
+See [`QUICK-START-LOCAL.md`](QUICK-START-LOCAL.md) for complete setup instructions.
+
+**Quick version:**
 ```bash
-# Clone repository
-git clone <repository-url>
-cd Faith_Connect
+# Start MySQL (via Laragon or Docker)
+# Then run setup script
+.\scripts\setup-local.ps1
 
-# Install dependencies (when services are created)
-npm install
+# Start services
+.\scripts\start-services.ps1
+```
 
-# Copy environment template
-cp .env.template .env
-
-# Start local services
-docker-compose up -d
+**Or use Docker:**
+```bash
+docker compose -f infrastructure/docker-compose.local.yml up -d mysql postgres redis
 ```
 
 ## 📁 Project Structure
@@ -85,12 +108,15 @@ Faith_Connect/
 
 ## 🎯 Development Phases
 
-### Sprint 1 (Weeks 1-2) - Live Prayer Foundations
-- Phone OTP Auth
-- Meetings Service with Agora
-- WebSocket events
-- Background music MVP
-- Observability
+### ✅ Sprint 1 (Weeks 1-2) - Live Prayer Foundations - **COMPLETE**
+- ✅ Phone OTP Auth
+- ✅ Meetings Service with Agora
+- ✅ WebSocket events
+- ✅ Background music MVP
+- ✅ Screen/resource share hooks
+- ✅ Observability
+
+**See:** [`docs/SPRINT-1-COMPLETE.md`](docs/SPRINT-1-COMPLETE.md) for full completion report
 
 ### Sprint 2 (Weeks 3-4) - Live Prayer UX + Reliability
 - Meeting controls UI
@@ -149,5 +175,7 @@ npm run test:load
 
 ---
 
-**Status**: 🚧 In Development - Sprint 1
+**Status**: ✅ Sprint 1 Complete - Ready for Sprint 2
+
+See [`docs/SPRINT-1-COMPLETE.md`](docs/SPRINT-1-COMPLETE.md) for completion details.
 

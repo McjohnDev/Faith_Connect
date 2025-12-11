@@ -104,10 +104,77 @@ export class DatabaseService {
     logger.info(`Updating user ${userId}`);
   }
 
-  async getUserDeviceCount(_userId: string): Promise<number> {
-    // Implementation for device count check
-    // For now, return 0 (will implement device tracking later)
-    return 0;
+  async getUserDeviceCount(userId: string): Promise<number> {
+    const query = this.dbType === 'mysql'
+      ? 'SELECT COUNT(*) as count FROM devices WHERE user_id = ?'
+      : 'SELECT COUNT(*) as count FROM devices WHERE user_id = $1';
+
+    try {
+      if (this.dbType === 'mysql' && this.mysqlPool) {
+        const [rows] = await this.mysqlPool.execute(query, [userId]);
+        return (rows as any[])[0].count;
+      } else if (this.pgPool) {
+        const result = await this.pgPool.query(query, [userId]);
+        return parseInt(result.rows[0].count);
+      }
+      return 0;
+    } catch (error) {
+      logger.error('Get device count error:', error);
+      return 0;
+    }
+  }
+
+  async deviceExists(userId: string, deviceId: string): Promise<boolean> {
+    const query = this.dbType === 'mysql'
+      ? 'SELECT COUNT(*) as count FROM devices WHERE user_id = ? AND device_id = ?'
+      : 'SELECT COUNT(*) as count FROM devices WHERE user_id = $1 AND device_id = $2';
+
+    try {
+      if (this.dbType === 'mysql' && this.mysqlPool) {
+        const [rows] = await this.mysqlPool.execute(query, [userId, deviceId]);
+        return (rows as any[])[0].count > 0;
+      } else if (this.pgPool) {
+        const result = await this.pgPool.query(query, [userId, deviceId]);
+        return parseInt(result.rows[0].count) > 0;
+      }
+      return false;
+    } catch (error) {
+      logger.error('Check device exists error:', error);
+      return false;
+    }
+  }
+
+  async createOrUpdateDevice(
+    userId: string,
+    deviceId: string,
+    deviceName?: string,
+    deviceType?: string
+  ): Promise<void> {
+    const query = this.dbType === 'mysql'
+      ? `INSERT INTO devices (id, user_id, device_id, device_name, device_type, last_used_at, created_at)
+         VALUES (UUID(), ?, ?, ?, ?, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+           device_name = VALUES(device_name),
+           device_type = VALUES(device_type),
+           last_used_at = NOW()`
+      : `INSERT INTO devices (id, user_id, device_id, device_name, device_type, last_used_at, created_at)
+         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT (user_id, device_id) DO UPDATE SET
+           device_name = EXCLUDED.device_name,
+           device_type = EXCLUDED.device_type,
+           last_used_at = CURRENT_TIMESTAMP`;
+
+    try {
+      if (this.dbType === 'mysql' && this.mysqlPool) {
+        await this.mysqlPool.execute(query, [userId, deviceId, deviceName || null, deviceType || null]);
+      } else if (this.pgPool) {
+        await this.pgPool.query(query, [userId, deviceId, deviceName || null, deviceType || null]);
+      }
+      logger.info(`Device tracked: ${deviceId} for user ${userId}`);
+    } catch (error) {
+      logger.error('Create/update device error:', error);
+      throw error;
+    }
   }
 
   private mapToUser(row: any): User {

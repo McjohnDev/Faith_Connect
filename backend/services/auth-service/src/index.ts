@@ -12,6 +12,7 @@ import dotenv from 'dotenv';
 import { authRouter } from './routes/auth.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
+import { metricsHandler, metricsMiddleware } from './middleware/metrics';
 
 // Load environment variables
 dotenv.config();
@@ -28,6 +29,9 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Metrics (Prometheus)
+app.use(metricsMiddleware);
+
 // Request logging
 app.use((req: Request, _res: Response, next: NextFunction) => {
   logger.info(`${req.method} ${req.path}`, {
@@ -36,6 +40,9 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   });
   next();
 });
+
+// Metrics endpoint
+app.get('/metrics', metricsHandler);
 
 // Health check
 app.get('/health', (_req: Request, res: Response) => {
