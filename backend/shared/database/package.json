@@ -1,0 +1,28 @@
+{
+  "name": "@faithconnect/shared-database",
+  "version": "1.0.0",
+  "description": "Shared database utilities and migrations",
+  "main": "dist/index.js",
+  "scripts": {
+    "setup": "node scripts/setup-database.js",
+    "migrate": "tsx migrate.ts",
+    "migrate:mysql": "cross-env NODE_ENV=development tsx migrate.ts",
+    "migrate:postgres": "cross-env NODE_ENV=production tsx migrate.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "mysql2": "^3.15.3",
+    "pg": "^8.16.3",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.26",
+    "@types/pg": "^8.15.6",
+    "cross-env": "^10.1.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

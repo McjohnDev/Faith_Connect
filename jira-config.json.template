@@ -1,0 +1,9 @@
+{
+  "JIRA_BASE_URL": "https://mcjohndev743.atlassian.net",
+  "JIRA_EMAIL": "your-email@example.com",
+  "JIRA_API_TOKEN": "your-api-token-here",
+  "JIRA_ORG_ID": "your-org-id-here",
+  "JIRA_PROJECT_KEY": "FC",
+  "JIRA_AUTH_METHOD": "bearer"
+}
+
