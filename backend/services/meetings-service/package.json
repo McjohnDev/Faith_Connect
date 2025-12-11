@@ -12,6 +12,7 @@
     "test": "jest",
     "test:websocket": "node scripts/test-websocket-events.js",
     "test:websocket:integration": "node scripts/test-websocket-integration.js",
+    "test:recording:integration": "node scripts/test-recording-integration.js",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

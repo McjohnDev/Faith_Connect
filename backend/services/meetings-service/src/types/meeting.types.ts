@@ -107,3 +107,22 @@ export interface UpdateMusicVolumeDto {
   volume: number; // 0-100
 }
 
+export interface RecordingState {
+  isRecording: boolean;
+  recordingId?: string;
+  startedBy?: string; // userId
+  startedAt?: Date;
+  stoppedAt?: Date;
+  storageUrl?: string; // URL to stored recording file
+  duration?: number; // Duration in seconds
+  fileSize?: number; // File size in bytes
+}
+
+export enum RecordingStatus {
+  STARTING = 'starting',
+  RECORDING = 'recording',
+  STOPPING = 'stopping',
+  STOPPED = 'stopped',
+  FAILED = 'failed'
+}
+

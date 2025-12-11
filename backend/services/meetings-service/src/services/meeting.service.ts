@@ -7,6 +7,8 @@ import { randomUUID } from 'crypto';
 import { AgoraService } from './agora.service';
 import { DatabaseService } from './database.service';
 import { MusicStateRepository } from '../repositories/musicState.repository';
+import { RecordingStateRepository } from '../repositories/recordingState.repository';
+import { StorageService } from './storage.service';
 import { logger } from '../utils/logger';
 import {
   Meeting,
@@ -20,7 +22,8 @@ import {
   BackgroundMusicState,
   StartMusicDto,
   UpdateMusicVolumeDto,
-  ShareResourceDto
+  ShareResourceDto,
+  RecordingState
 } from '../types/meeting.types';
 
 export class MeetingService {
@@ -28,11 +31,15 @@ export class MeetingService {
   private dbService: DatabaseService;
   private wsService?: any; // WebSocketService (circular dependency, set via setter)
   private musicRepo: MusicStateRepository;
+  private recordingRepo: RecordingStateRepository;
+  private storageService: StorageService;
 
   constructor() {
     this.agoraService = new AgoraService();
     this.dbService = new DatabaseService();
     this.musicRepo = new MusicStateRepository();
+    this.recordingRepo = new RecordingStateRepository();
+    this.storageService = new StorageService();
   }
 
   /**
@@ -498,9 +505,9 @@ export class MeetingService {
   }
 
   /**
-   * Start recording (placeholder hook)
+   * Start recording
    */
-  async startRecording(meetingId: string, userId: string): Promise<void> {
+  async startRecording(meetingId: string, userId: string): Promise<RecordingState> {
     const meeting = await this.dbService.getMeeting(meetingId);
     if (!meeting) {
       throw new Error('MEETING_NOT_FOUND');
@@ -516,19 +523,42 @@ export class MeetingService {
       throw new Error('INSUFFICIENT_PERMISSIONS');
     }
 
+    // Check if already recording
+    const existing = await this.recordingRepo.get(meetingId);
+    if (existing && existing.isRecording) {
+      throw new Error('RECORDING_ALREADY_STARTED');
+    }
+
+    const recordingId = randomUUID();
+    const recordingState: RecordingState = {
+      isRecording: true,
+      recordingId,
+      startedBy: userId,
+      startedAt: new Date()
+    };
+
+    // Persist recording state
+    await this.recordingRepo.set(meetingId, recordingState);
+
+    // Update meeting flag
     await this.dbService.updateMeeting(meetingId, { recordingEnabled: true });
 
+    // In production, this would trigger Agora Cloud Recording
+    // For now, we just log and store state
+    logger.info(`Recording started for meeting ${meetingId} by ${userId}, recordingId: ${recordingId}`);
+
+    // Emit WebSocket event
     if (this.wsService) {
       this.wsService.recordingStarted(meetingId, userId);
     }
 
-    logger.info(`Recording started for meeting ${meetingId} by ${userId}`);
+    return recordingState;
   }
 
   /**
-   * Stop recording (placeholder hook)
+   * Stop recording
    */
-  async stopRecording(meetingId: string, userId: string): Promise<void> {
+  async stopRecording(meetingId: string, userId: string): Promise<RecordingState> {
     const meeting = await this.dbService.getMeeting(meetingId);
     if (!meeting) {
       throw new Error('MEETING_NOT_FOUND');
@@ -544,13 +574,65 @@ export class MeetingService {
       throw new Error('INSUFFICIENT_PERMISSIONS');
     }
 
+    // Get current recording state
+    const current = await this.recordingRepo.get(meetingId);
+    if (!current || !current.isRecording) {
+      throw new Error('NO_ACTIVE_RECORDING');
+    }
+
+    const stoppedAt = new Date();
+    const duration = current.startedAt 
+      ? Math.floor((stoppedAt.getTime() - current.startedAt.getTime()) / 1000)
+      : 0;
+
+    // In production, this would:
+    // 1. Stop Agora Cloud Recording
+    // 2. Wait for recording file to be available
+    // 3. Upload to storage (S3, etc.)
+    // 4. Get storage URL
+
+    // Stub: generate mock storage URL
+    const storageUrl = await this.storageService.uploadRecording(
+      meetingId,
+      current.recordingId!,
+      `stub://recording-${current.recordingId}.mp4`
+    );
+
+    const updatedState: RecordingState = {
+      ...current,
+      isRecording: false,
+      stoppedAt,
+      duration,
+      storageUrl,
+      fileSize: Math.floor(Math.random() * 100000000) // Stub file size
+    };
+
+    // Persist updated state
+    await this.recordingRepo.set(meetingId, updatedState);
+
+    // Update meeting flag
     await this.dbService.updateMeeting(meetingId, { recordingEnabled: false });
 
+    logger.info(`Recording stopped for meeting ${meetingId} by ${userId}, duration: ${duration}s, storage: ${storageUrl}`);
+
+    // Emit WebSocket event
     if (this.wsService) {
       this.wsService.recordingStopped(meetingId, userId);
     }
 
-    logger.info(`Recording stopped for meeting ${meetingId} by ${userId}`);
+    return updatedState;
+  }
+
+  /**
+   * Get current recording state
+   */
+  async getRecordingState(meetingId: string): Promise<RecordingState | null> {
+    const meeting = await this.dbService.getMeeting(meetingId);
+    if (!meeting) {
+      throw new Error('MEETING_NOT_FOUND');
+    }
+
+    return await this.recordingRepo.get(meetingId);
   }
 
   /**

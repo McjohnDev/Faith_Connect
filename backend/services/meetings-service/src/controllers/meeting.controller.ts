@@ -332,10 +332,11 @@ export const startRecording = async (
     const userId = getUserId(req);
     const { meetingId } = req.params;
 
-    await getMeetingService().startRecording(meetingId, userId);
+    const recordingState = await getMeetingService().startRecording(meetingId, userId);
 
     res.json({
       success: true,
+      data: recordingState,
       message: 'Recording started'
     });
   } catch (error: any) {
@@ -353,14 +354,38 @@ export const stopRecording = async (
     const userId = getUserId(req);
     const { meetingId } = req.params;
 
-    await getMeetingService().stopRecording(meetingId, userId);
+    const recordingState = await getMeetingService().stopRecording(meetingId, userId);
 
     res.json({
       success: true,
+      data: recordingState,
       message: 'Recording stopped'
     });
   } catch (error: any) {
     logger.error('Stop recording error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get current recording state
+ */
+export const getRecordingState = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { meetingId } = req.params;
+
+    const recordingState = await getMeetingService().getRecordingState(meetingId);
+
+    res.json({
+      success: true,
+      data: recordingState
+    });
+  } catch (error: any) {
+    logger.error('Get recording state error:', error);
     next(error);
   }
 };

@@ -18,6 +18,7 @@ import {
   getMusicState,
   startRecording,
   stopRecording,
+  getRecordingState,
   startScreenshare,
   stopScreenshare,
   shareResource
@@ -130,6 +131,12 @@ router.post(
   rateLimiter.controlMeeting,
   validateRequest('stopRecording'),
   stopRecording
+);
+
+router.get(
+  '/:meetingId/recording',
+  rateLimiter.getMeeting,
+  getRecordingState
 );
 
 // Screenshare placeholders
